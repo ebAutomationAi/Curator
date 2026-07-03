@@ -82,6 +82,31 @@ function validateSchema(obj) {
 
 // ── Jina ──────────────────────────────────────────────────────────────────────
 
+// Señales de login que aparecen solas en su línea (botones/CTAs, no prosa).
+// Umbral 2: análisis real de TikTok via Jina muestra "Log in" ×4 standalone;
+// un artículo normal produce 0 señales aunque mencione "log in" en texto.
+const LOGIN_SIGNALS = [
+  'log in',
+  'login',
+  'sign in',
+  'sign up',
+  'continue with google',
+  'continue with facebook',
+  'continue with apple',
+  'use qr code',
+];
+
+function detectLoginWall(content) {
+  const lower = content.toLowerCase();
+  let signalCount = 0;
+  for (const signal of LOGIN_SIGNALS) {
+    const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matches = lower.match(new RegExp(`^\\s*${escaped}\\s*$`, 'gim'));
+    if (matches) signalCount += matches.length;
+  }
+  return { isWall: signalCount >= 2, signalCount };
+}
+
 async function fetchJina(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), JINA_TIMEOUT_MS);
@@ -93,25 +118,12 @@ async function fetchJina(url) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const content = await response.text();
 
-    // Detección de wall de login de TikTok (y similares).
-    // Jina devuelve 200 con el HTML de la página de login en texto plano;
-    // si el contenido contiene estas señales sin título real, no es aprovechable.
-    const LOGIN_WALL_SIGNALS = [
-      'Log in to TikTok',
-      'tiktok.com/login',
-      'musically.com/login',
-      'Please log in',
-      'Sign in to continue',
-    ];
-    const isLoginWall = LOGIN_WALL_SIGNALS.some((signal) =>
-      content.includes(signal)
-    );
-    if (isLoginWall) {
-      fastify.log.warn({ url }, 'fetchJina: wall de login detectado — descartando contenido');
+    const { isWall, signalCount } = detectLoginWall(content);
+    if (isWall) {
+      fastify.log.warn({ url, signalCount }, 'fetchJina: wall de login detectado — descartando contenido');
       return { content: null, ok: false, error: 'Login wall detectado' };
     }
 
-    // Contenido demasiado corto: probablemente página de error o redirect vacío.
     if (content.trim().length < 200) {
       fastify.log.warn({ url, length: content.trim().length }, 'fetchJina: contenido insuficiente — descartando');
       return { content: null, ok: false, error: 'Contenido insuficiente' };

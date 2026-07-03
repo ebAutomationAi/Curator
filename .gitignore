@@ -1,0 +1,19 @@
+# Secretos — NUNCA al repo
+.env
+
+# Datos de Karakeep (base de datos, assets, índices Meilisearch)
+karakeep/data/
+karakeep/meilisearch/
+
+# Logs del curator
+curator/logs/
+
+# Dependencias Node
+curator/node_modules/
+
+# Claude Code (archivos locales del editor IA)
+.claude/
+
+# Sistema
+.DS_Store
+*.log

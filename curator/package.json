@@ -1,0 +1,12 @@
+{
+  "name": "curator",
+  "version": "1.0.0",
+  "description": "Intelligent content curation pipeline service",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0"
+  }
+}

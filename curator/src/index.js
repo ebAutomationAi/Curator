@@ -91,7 +91,33 @@ async function fetchJina(url) {
       headers: { 'Accept': 'text/plain' },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return { content: await response.text(), ok: true };
+    const content = await response.text();
+
+    // Detección de wall de login de TikTok (y similares).
+    // Jina devuelve 200 con el HTML de la página de login en texto plano;
+    // si el contenido contiene estas señales sin título real, no es aprovechable.
+    const LOGIN_WALL_SIGNALS = [
+      'Log in to TikTok',
+      'tiktok.com/login',
+      'musically.com/login',
+      'Please log in',
+      'Sign in to continue',
+    ];
+    const isLoginWall = LOGIN_WALL_SIGNALS.some((signal) =>
+      content.includes(signal)
+    );
+    if (isLoginWall) {
+      fastify.log.warn({ url }, 'fetchJina: wall de login detectado — descartando contenido');
+      return { content: null, ok: false, error: 'Login wall detectado' };
+    }
+
+    // Contenido demasiado corto: probablemente página de error o redirect vacío.
+    if (content.trim().length < 200) {
+      fastify.log.warn({ url, length: content.trim().length }, 'fetchJina: contenido insuficiente — descartando');
+      return { content: null, ok: false, error: 'Contenido insuficiente' };
+    }
+
+    return { content, ok: true };
   } catch (err) {
     return { content: null, ok: false, error: err.message };
   } finally {

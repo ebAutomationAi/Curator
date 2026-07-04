@@ -17,3 +17,7 @@ curator/node_modules/
 # Sistema
 .DS_Store
 *.log
+
+# Backups generados por troubleshooting — nunca al repo
+*.tar.gz
+*.backup-*

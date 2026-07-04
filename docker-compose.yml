@@ -5,7 +5,7 @@ services:
     container_name: karakeep
     restart: unless-stopped
     volumes:
-      - /opt/curator/karakeep/data:/data
+      - ./karakeep/data:/data
     env_file:
       - .env
     environment:
@@ -51,7 +51,7 @@ services:
     environment:
       MEILI_NO_ANALYTICS: "true"
     volumes:
-      - /opt/curator/karakeep/meilisearch:/meili_data
+      - ./karakeep/meilisearch:/meili_data
     networks:
       - proxy
     logging:
@@ -67,7 +67,7 @@ services:
     env_file:
       - .env
     volumes:
-      - /opt/curator/curator/logs:/app/logs
+      - ./curator/logs:/app/logs
     networks:
       - proxy
     logging:

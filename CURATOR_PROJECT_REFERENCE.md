@@ -1,5 +1,5 @@
 # CURATOR — Documento de Referencia del Proyecto
-**Versión:** 1.3 — Mayo 2026
+**Versión:** 1.4 — Mayo 2026
 **Estado:** Proyecto completo — todas las fases validadas (Fases 0–4)
 **Rol humano:** Orquestador/Arquitecto
 **Agente ejecutor:** Claude Code

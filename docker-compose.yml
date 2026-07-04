@@ -1,3 +1,4 @@
+# docker-compose.yml — reemplazo total
 services:
   karakeep:
     image: ghcr.io/karakeep-app/karakeep:${KARAKEEP_VERSION:-release}
@@ -5,8 +6,6 @@ services:
     restart: unless-stopped
     volumes:
       - /opt/curator/karakeep/data:/data
-    ports:
-      - "3000:3000"
     env_file:
       - .env
     environment:

@@ -1,164 +1,162 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Este archivo proporciona orientación a Claude Code (claude.ai/code) al trabajar con el código en este repositorio.
 
-## Project overview
+## Descripción general del proyecto
 
-**CURATOR** is an intelligent content curation pipeline running on an Orange Pi 5 Max (ARM64). The user shares links from their phone via Telegram; the system extracts content, processes it with AI, archives it in Karakeep, and sends a Telegram confirmation.
+**CURATOR** es un pipeline inteligente de curación de contenidos que se ejecuta en una Orange Pi 5 Max (ARM64). El usuario comparte enlaces desde su móvil vía Telegram; el sistema extrae el contenido, lo procesa con IA, lo archiva en Karakeep y envía una confirmación por Telegram.
 
-```
-[Mobile] → Telegram Bot → Curator Service (Docker) → Jina Reader → Gemini API → Karakeep API → Telegram notification
-```
+[Móvil] → Telegram Bot → Curator Service (Docker) → Jina Reader → Gemini API → Karakeep API → Notificación de Telegram
 
-**Current state:** Phase 0 complete (architecture defined). Phase 1 is next.
 
-## Host environment
+**Estado actual:** Proyecto completo — todas las fases validadas (Fases 0–4).
+
+## Entorno del host
 
 - **Hardware:** Orange Pi 5 Max (ARM64)
-- **User:** `kiko`
-- **Timezone:** `Europe/Madrid`
+- **Usuario:** `kiko`
+- **Zona horaria:** `Europe/Madrid`
 - **Runtime:** Docker + Docker Compose
-- **Reverse proxy:** Nginx Proxy Manager (container `npm`, configured manually via UI on port 81 — the agent never touches NPM)
-- **Docker network for proxying:** `proxy`
-- **Public domain:** `curator-kiko.duckdns.org`
-- **Project directory:** `/opt/curator`
+- **Proxy inverso:** Nginx Proxy Manager (contenedor `npm`, configurado manualmente mediante la interfaz de usuario en el puerto 81 — el agente nunca toca NPM)
+- **Red Docker para proxiado:** `proxy`
+- **Dominio público:** `curator-kiko.duckdns.org`
+- **Directorio del proyecto:** `/opt/curator`
 
-## Common commands
+## Comandos comunes
 
 ```bash
-# Start all services
+# Iniciar todos los servicios
 docker compose up -d
 
-# Check service status
+# Forzar la recreación para recargar el archivo .env por completo (imprescindible para cambios en .env)
+docker compose up -d --force-recreate curator
+
+# Verificar el estado de los servicios
 docker compose ps
 
-# View logs for a specific service
+# Ver logs en tiempo real de un servicio específico
 docker compose logs -f curator
 
-# Restart a single service
+# Reiniciar un solo servicio (nota: esto NO recarga cambios del archivo .env)
 docker compose restart curator
 
-# Stop everything
+# Detener todos los servicios
 docker compose down
-```
 
-## Directory structure
-
-```
+# Verificar las variables de entorno activas dentro del contenedor
+docker compose exec curator printenv KARAKEEP_API_KEY
+Estructura de directorios
 /opt/curator/
 ├── CLAUDE.md
-├── CURATOR_PROJECT_REFERENCE.md   ← full spec, source of truth
+├── CURATOR_PROJECT_REFERENCE.md   ← Especificación completa, fuente de verdad
 ├── docker-compose.yml
-├── .env                           ← secrets, never in git
+├── .env                           ← Secretos, nunca en git (¡Prohibidos los comentarios inline!)
 ├── .env.example
 ├── karakeep/
-│   └── data/                      ← Karakeep persistent data
+│   └── data/                      ← Datos persistentes de Karakeep
 └── curator/
-    ├── src/                       ← Curator service source
-    ├── logs/                      ← runtime logs
-    └── Dockerfile
-```
+    ├── src/                       ← Código fuente del servicio Curator (Node.js + Fastify)
+    ├── logs/                      ← Logs de ejecución del servicio
+    └── Dockerfile                 ← Imagen basada en node:20-alpine
+Servicios
+Karakeep (Gestor de marcadores)
+Imagen: ghcr.io/karakeep-app/karakeep:release
 
-## Services
+Puerto interno: 3000
 
-### Karakeep (bookmark manager)
-- Image: `ghcr.io/karakeep-app/karakeep:release`
-- Internal port: `3000`
-- NPM domain: `karakeep.curator-kiko.duckdns.org`
-- Data volume: `/opt/curator/karakeep/data`
+Dominio NPM: karakeep.curator-kiko.duckdns.org
 
-### Curator Service (the pipeline)
-- Internal port: `3001`
-- Webhook endpoint: `POST /webhook/telegram`
-- NPM domain: `curator-kiko.duckdns.org`
-- Logs volume: `/opt/curator/curator/logs`
+Volumen de datos: /opt/curator/karakeep/data
 
-Both containers must use `restart: unless-stopped` and join the `proxy` network.
+Nota crítica de integración: Requiere obligatoriamente que los headers content-type y authorization se envíen estrictamente en minúsculas para evitar errores 401 intermitentes.
 
-## Environment variables (.env)
+Curator Service (El pipeline)
+Puerto interno: 3001
 
-```bash
-BOT_TOKEN=           # Telegram bot token (BotFather)
-TELEGRAM_CHAT_ID=    # User's chat ID for notifications
-GEMINI_API_KEY=      # Primary AI (Google AI Studio, free tier)
-GROQ_API_KEY=        # Fallback AI (optional)
-KARAKEEP_API_KEY=    # Generated after first Karakeep startup
+Endpoint del webhook: POST /webhook/telegram
+
+Dominio NPM: curator-kiko.duckdns.org
+
+Volumen de logs: /opt/curator/curator/logs
+
+Stack: Node.js 20 + Fastify. Única dependencia npm: fastify (aprovecha el fetch nativo de Node 20).
+
+Ambos contenedores deben usar restart: unless-stopped y unirse a la red proxy.
+
+Variables de entorno (.env)
+Importante: Está prohibido colocar comentarios en la misma línea que un valor (comentarios inline), ya que Docker o los intérpretes pueden incluir el comentario y caracteres especiales como parte de la cadena de texto de la credencial.
+
+Bash
+BOT_TOKEN=            # Token del bot de Telegram (BotFather)
+TELEGRAM_CHAT_ID=     # ID de chat del usuario para notificaciones
+GEMINI_API_KEY=       # IA primaria (Google AI Studio, free tier)
+GROQ_API_KEY=         # IA de fallback (opcional)
+KARAKEEP_API_KEY=     # Generada tras el primer arranque de Karakeep
 KARAKEEP_URL=http://karakeep:3000
 NODE_ENV=production
 TZ=Europe/Madrid
-```
+TELEGRAM_POLLING=true # Activo temporalmente si el webhook HTTPS no está registrado
+Lógica del pipeline
+Extracción de contenido
+Principal: https://r.jina.ai/{url} (sin necesidad de API key).
 
-## Pipeline logic
+Si falla: Pasa únicamente el título + URL a la IA con la instrucción explícita "resume con lo disponible".
 
-### Content extraction
-- Primary: `https://r.jina.ai/{url}` (no API key needed)
-- On failure: pass only title+URL to AI with instruction to summarize with available info
+Procesamiento de IA (Fallback Gemini → Groq)
+La IA debe devolver exclusivamente este esquema JSON; cualquier campo faltante o formato incorrecto se trata como un error crítico del pipeline:
 
-### AI processing (Gemini → Groq fallback)
-The AI must return **exactly** this JSON schema — any missing field or wrong format is an error:
-
-```json
+JSON
 {
-  "titulo": "string — max 80 chars",
+  "titulo": "string — máx 80 caracteres",
   "tipo": "articulo | video | hilo | podcast | otro",
   "categoria": "tecnologia | ciencia | negocios | cultura | educacion | salud | otra",
-  "resumen": "string — 2-3 sentences in Spanish",
+  "resumen": "string — 2 a 3 frases en español",
   "puntos_clave": ["string", "string", "string"],
   "prioridad": 1,
   "etiquetas": ["string", "string", "string"]
 }
-```
+prioridad es un número entero del 1 al 5 (5 = máxima relevancia). Las etiquetas generadas siempre se normalizan a minúsculas mediante código (.toLowerCase()) antes de enviarse a Karakeep.
 
-`prioridad` is an integer 1–5 (5 = highest relevance).
+Cadena de fallback ante errores
+¿Jina OK? → IA (Gemini) OK? → Karakeep OK? → Notificar ✅
+             ↓ falla (e.g. 429)
+          ¿Groq OK? → Karakeep → Notificar ✅
+             ↓ falla (ambos sin cupo)
+          Guardar con resumen="Sin procesar", Notificar ❌
+Comportamiento ante 429: Ante un error 429 Too Many Requests en Gemini Free Tier, el servicio conmuta inmediatamente a Groq sin esperas. Los reintentos con retraso de 5s quedan reservados exclusivamente para errores transitorios (502, 503). Los cupos diarios se restablecen sobre las 09:00 hora de Madrid (Gemini) y a medianoche UTC (Groq).
 
-### Fallback chain
-```
-Jina OK? → AI (Gemini) OK? → Karakeep OK? → notify ✅
-                           ↓ fail
-                        Groq OK? → Karakeep → notify ✅
-                                 ↓ fail
-                              save with resumen="Sin procesar", notify ❌
-```
+Formatos de notificación de Telegram
+Éxito:
 
-## Telegram notification formats
-
-**Success:**
-```
 ✅ Guardado
 📌 {titulo}
 📂 {categoria} · {tipo} · prioridad {prioridad}/5
 🏷 {etiqueta1}, {etiqueta2}, {etiqueta3}
-```
+Extracción parcial (Paywalls / Errores de Jina):
 
-**Partial extraction:**
-```
 ⚠️ Guardado (contenido parcial)
 📌 {titulo}
 📂 {categoria} · {tipo}
 ℹ️ No se pudo extraer el texto completo
-```
+Error:
 
-**Error:**
-```
 ❌ Error al procesar
 🔗 {url}
 💬 {motivo_breve}
-```
+Restricciones del agente
+Nunca modificar ni alterar configuraciones de NPM, DuckDNS o contenedores ajenos al proyecto.
 
-## Agent constraints
+Nunca exponer puertos directamente al host sin aprobación explícita del orquestador.
 
-- **Never** modify NPM, DuckDNS, or any existing containers outside this project
-- **Never** expose ports directly to the host without explicit orchestrator approval
-- **Never** store credentials outside `.env`
-- **Never** advance to the next phase without explicit validation from the orchestrator
-- **Never** make decisions about Karakeep's data schema without prior consultation
+Nunca almacenar credenciales o secretos fuera del archivo .env.
 
-## Phase validation criteria
+Todos los contenedores del stack deben configurarse con restart: unless-stopped y pertenecer a la red proxy.
 
-**Phase 1 done when:** `docker compose ps` shows all services `Up`; Karakeep responds at `http://karakeep:3000` from inside the network; Telegram bot responds to `/start`; Gemini returns a response to a test call.
+Criterios de validación (Fases de desarrollo completadas)
+Fase 1 (Infraestructura): Todos los contenedores estables en Up. Karakeep operativo internamente y el bot responde a comandos iniciales.
 
-**Phase 2 done when:** Sending a URL to the bot creates a Karakeep bookmark in under 30 seconds; Gemini JSON contains all schema fields; logs show each pipeline step without errors.
+Fase 2 (Pipeline Core): Flujo completo de almacenamiento en menos de 30 segundos. Formato JSON estrictamente validado.
 
-**Phase 3 done when:** User receives Telegram notification for every processed link; a paywalled link generates ⚠️ instead of ❌; Gemini failure correctly triggers Groq fallback.
+Fase 3 (Cierre del Loop): Notificaciones móviles completamente funcionales diferenciando estados (✅, ⚠️, ❌) y fallback automatizado a Groq verificado.
 
-**Phase 4 done when:** Rebooting the Orange Pi brings all services up automatically; logs rotate without filling the disk.
+Fase 4 (Hardening): Persistencia total tras reinicio físico de la Orange Pi. Rotación de logs Docker configurada en docker-compose.yml (json-file, máximo 10MB/5 archivos para curator, 10MB/3 archivos para karakeep). README de mantenimiento presente en /opt/curator/README.md.

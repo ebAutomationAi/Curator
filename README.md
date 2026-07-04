@@ -6,7 +6,7 @@ Sistema de curación de contenidos: el usuario comparte URLs por Telegram y el s
 Telegram → Curator Service → Jina Reader → Groq/Gemini → Karakeep → Notificación Telegram
 ```
 
-Directorio del proyecto: `/opt/curator`  
+Directorio del proyecto: `/opt/curator`
 Zona horaria: `Europe/Madrid`
 
 ---
@@ -85,7 +85,7 @@ Los logs rotan automáticamente (configurado en `docker-compose.yml`):
 
 ## Desactivar TELEGRAM_POLLING (activar modo webhook)
 
-El modo polling está activo temporalmente (`TELEGRAM_POLLING=true` en `.env`).  
+El modo polling está activo temporalmente (`TELEGRAM_POLLING=true` en `.env`).
 Cuando el DNS propague y NPM apunte a `curator:3001`, cambiar a webhook:
 
 1. En Nginx Proxy Manager (puerto 81), verificar que el Proxy Host `curator-kiko.duckdns.org` apunta a `curator:3001` con SSL activo.
@@ -122,79 +122,562 @@ Si Groq también falla, el bookmark se guarda en Karakeep con `resumen = "Sin pr
 
 ---
 
-## Backup y restauración
+Backup y restauración
 
-### Hacer backup
+📁 Opciones de almacenamiento para backups
 
-Los datos importantes están en dos directorios:
+El sistema permite guardar backups en tres destinos diferentes. Elige el que mejor se adapte a tu infraestructura:
 
-```bash
-# Backup de Karakeep (bookmarks, usuarios, configuración)
-tar -czf /tmp/karakeep-backup-$(date +%Y%m%d).tar.gz /opt/curator/karakeep/data
 
-# Backup del proyecto completo (incluye .env y código)
-tar -czf /tmp/curator-backup-$(date +%Y%m%d).tar.gz \
-  --exclude=/opt/curator/karakeep/data \
-  /opt/curator
-```
 
-Copiar los archivos `.tar.gz` a un lugar seguro (NAS, nube, otro equipo).
+🔌 Opción 1: Backup en disco local o NAS montado
 
-### Restaurar
+Recomendado para: Usuarios con disco externo, NAS local o segundo disco en la Orange Pi.
 
-1. Parar los servicios:
-   ```bash
-   cd /opt/curator && docker compose down
-   ```
+Montar un disco externo o NAS
 
-2. Restaurar los datos:
-   ```bash
-   tar -xzf karakeep-backup-YYYYMMDD.tar.gz -C /
-   ```
 
-3. Arrancar:
-   ```bash
-   docker compose up -d
-   ```
 
----
 
-## Actualizar Karakeep
 
-1. Parar los servicios:
-   ```bash
-   cd /opt/curator && docker compose down
-   ```
+Identificar el disco o recurso de red:
 
-2. Hacer backup de los datos (ver sección anterior).
 
-3. Actualizar la imagen:
-   ```bash
-   docker compose pull karakeep
-   ```
 
-4. Arrancar:
-   ```bash
-   docker compose up -d
-   ```
+Para **discos USB/externos**, ejecuta `lsblk` o `sudo fdisk -l` para ver el dispositivo (ej: `/dev/sda1`).
 
-5. Verificar en los logs que Karakeep arranca correctamente:
-   ```bash
-   docker compose logs -f karakeep
-   ```
+Para **NAS**, necesitarás la IP y el path de la carpeta compartida (ej: `//192.168.1.100/backups`).
 
-> La versión de Karakeep se controla con la variable `KARAKEEP_VERSION` en `.env`  
-> (por defecto usa `release`, es decir, siempre la última versión estable).
 
----
 
-## Referencia rápida de archivos
+Crear punto de montaje:
 
-| Ruta | Descripción |
-|---|---|
-| `/opt/curator/.env` | Variables de entorno y credenciales |
-| `/opt/curator/docker-compose.yml` | Definición de servicios |
-| `/opt/curator/curator/src/index.js` | Código del pipeline |
-| `/opt/curator/karakeep/data/` | Datos persistentes de Karakeep |
-| `/opt/curator/curator/logs/` | Logs de aplicación |
-| `/opt/curator/CURATOR_PROJECT_REFERENCE.md` | Especificación técnica completa |
+ sudo mkdir -p /mnt/backups/curator
+
+
+
+Montar el disco o NAS:
+
+
+
+**Para disco USB/externo (ext4):**
+
+**Para NAS (CIFS/SMB):**
+
+sudo apt install cifs-utils  # Instalar soporte para SMB/CIFS
+sudo mount -t cifs //192.168.1.100/backups /mnt/backups/curator -o username=tu_usuario,password=tu_contraseña,vers=3.0
+
+
+
+Configurar montaje automático al arrancar (opcional):
+
+
+
+
+
+
+
+
+
+Verificar el montaje:
+
+ df -h | grep curator
+
+Ejecutar backups en el disco montado
+
+
+
+
+
+Crear el script de backup (ej: /opt/curator/backup.sh):
+
+ #!/bin/bash
+ # Script de backup para Curator
+ # Guardará backups en /mnt/backups/curator/
+
+ BACKUP_DIR="/mnt/backups/curator"
+ DATE=$(date +%Y%m%d_%H%M%S)
+ REPO_DIR="/opt/curator"
+
+ # Crear directorio de backups si no existe
+ mkdir -p "$BACKUP_DIR"
+
+ # Backup de datos de Karakeep (crítico)
+ tar -czf "$BACKUP_DIR/karakeep-data-$DATE.tar.gz" "$REPO_DIR/karakeep/data"
+
+ # Backup del .env (crítico)
+ cp "$REPO_DIR/.env" "$BACKUP_DIR/.env-$DATE"
+
+ # Backup del código (opcional, sin datos sensibles)
+ tar -czf "$BACKUP_DIR/curator-code-$DATE.tar.gz" \
+   --exclude="$REPO_DIR/karakeep/data" \
+   --exclude="$REPO_DIR/curator/logs" \
+   "$REPO_DIR"
+
+ # Eliminar backups antiguos (mantener últimos 7 días)
+ find "$BACKUP_DIR" -name "*.tar.gz" -type f -mtime +7 -delete
+ find "$BACKUP_DIR" -name ".env-*" -type f -mtime +7 -delete
+
+ # Log
+ echo "Backup completado en $BACKUP_DIR el $(date)" >> "$BACKUP_DIR/backup_log.txt"
+
+
+
+Hacer el script ejecutable:
+
+ chmod +x /opt/curator/backup.sh
+
+
+
+Programar el backup con cron (ej: diariamente a las 2 AM):
+
+ crontab -e
+
+
+
+
+
+Probar el script manualmente:
+
+ /opt/curator/backup.sh
+
+
+
+☁️ Opción 2: Backup a Amazon S3
+
+Recomendado para: Usuarios con cuenta AWS (gratis durante 12 meses con Free Tier).
+
+Requisitos previos
+
+
+
+
+
+Crear un bucket en S3:
+
+
+
+Ve a [AWS S3 Console](https://s3.console.aws.amazon.com/).
+
+Haz clic en **"Crear bucket"** y sigue los pasos (nombre único, región cercana, etc.).
+
+
+
+Crear un usuario IAM con permisos para S3:
+
+
+
+Ve a [IAM Console](https://console.aws.amazon.com/iam/).
+
+Crea un nuevo usuario (ej: `curator-backup`).
+
+Asigna la política **`AmazonS3FullAccess`** (o restringe a tu bucket específico).
+
+Guarda las credenciales (**Access Key ID** y **Secret Access Key**).
+
+
+
+Instalar AWS CLI en la Orange Pi:
+
+ sudo apt update && sudo apt install -y awscli
+
+
+
+Configurar AWS CLI:
+
+ aws configure
+
+
+
+
+
+**AWS Access Key ID**: Tu clave de acceso.
+
+**AWS Secret Access Key**: Tu clave secreta.
+
+**Default region name**: Ej: `eu-west-1` (o la región de tu bucket).
+
+**Default output format**: `json`.
+
+Ejecutar backups en S3
+
+
+
+
+
+Crear el script de backup (ej: /opt/curator/backup_s3.sh):
+
+ #!/bin/bash
+ # Script de backup para Curator en Amazon S3
+
+ BUCKET_NAME="tu-bucket-curator"  # Cambia por el nombre de tu bucket
+ DATE=$(date +%Y%m%d_%H%M%S)
+ REPO_DIR="/opt/curator"
+ TEMP_DIR="/tmp/curator_backups"
+
+ # Crear directorio temporal
+ mkdir -p "$TEMP_DIR"
+
+ # Backup de datos de Karakeep (crítico)
+ tar -czf "$TEMP_DIR/karakeep-data-$DATE.tar.gz" "$REPO_DIR/karakeep/data"
+
+ # Backup del .env (crítico)
+ cp "$REPO_DIR/.env" "$TEMP_DIR/.env-$DATE"
+
+ # Backup del código (opcional, sin datos sensibles)
+ tar -czf "$TEMP_DIR/curator-code-$DATE.tar.gz" \
+   --exclude="$REPO_DIR/karakeep/data" \
+   --exclude="$REPO_DIR/curator/logs" \
+   "$REPO_DIR"
+
+ # Subir a S3
+ aws s3 cp "$TEMP_DIR/karakeep-data-$DATE.tar.gz" "s3://$BUCKET_NAME/backups/karakeep/"
+ aws s3 cp "$TEMP_DIR/.env-$DATE" "s3://$BUCKET_NAME/backups/env/"
+ aws s3 cp "$TEMP_DIR/curator-code-$DATE.tar.gz" "s3://$BUCKET_NAME/backups/code/"
+
+ # Limpiar archivos temporales
+ rm -rf "$TEMP_DIR"
+
+ # Log
+ echo "Backup a S3 completado el $(date)" >> /var/log/curator_backup.log
+
+
+
+Hacer el script ejecutable:
+
+ chmod +x /opt/curator/backup_s3.sh
+
+
+
+Programar el backup con cron (ej: diariamente a las 2 AM):
+
+ crontab -e
+
+
+
+
+
+Probar el script manualmente:
+
+ /opt/curator/backup_s3.sh
+
+
+
+Verificar en S3:
+
+
+
+Ve a [AWS S3 Console](https://s3.console.aws.amazon.com/) y comprueba que los archivos aparecen en tu bucket.
+
+
+
+🐳 Opción 3: Backup con volúmenes de Docker
+
+Recomendado para: Usuarios que prefieren gestionar backups directamente con Docker.
+
+Crear un volumen para backups
+
+
+
+
+
+Crear un volumen de Docker para almacenar backups:
+
+ docker volume create curator_backups
+
+
+
+Verificar el volumen:
+
+ docker volume inspect curator_backups
+
+
+
+Ejecutar backups usando el volumen
+
+
+
+
+
+Crear un contenedor temporal para hacer backups:
+
+ # Backup de Karakeep (datos)
+ docker run --rm \
+   -v karakeep_data:/from \
+   -v curator_backups:/backups \
+   alpine tar -czf /backups/karakeep-data-$(date +%Y%m%d_%H%M%S).tar.gz -C /from .
+
+ # Backup del .env (requiere montar el directorio del proyecto)
+ docker run --rm \
+   -v /opt/curator/.env:/from/.env \
+   -v curator_backups:/backups \
+   alpine cp /from/.env /backups/.env-$(date +%Y%m%d_%H%M%S)
+
+ # Backup del código (sin datos sensibles)
+ docker run --rm \
+   -v /opt/curator:/from \
+   -v curator_backups:/backups \
+   alpine tar -czf /backups/curator-code-$(date +%Y%m%d_%H%M%S).tar.gz \
+     --exclude=/from/karakeep/data \
+     --exclude=/from/curator/logs \
+     -C /from .
+
+
+
+Automatizar con un script (ej: /opt/curator/backup_docker_volumes.sh):
+
+ #!/bin/bash
+ # Script de backup usando volúmenes de Docker
+
+ DATE=$(date +%Y%m%d_%H%M%S)
+
+ # Backup de Karakeep (datos)
+ docker run --rm \
+   -v karakeep_data:/from \
+   -v curator_backups:/backups \
+   alpine tar -czf /backups/karakeep-data-$DATE.tar.gz -C /from .
+
+ # Backup del .env
+ docker run --rm \
+   -v /opt/curator/.env:/from/.env \
+   -v curator_backups:/backups \
+   alpine cp /from/.env /backups/.env-$DATE
+
+ # Backup del código
+ docker run --rm \
+   -v /opt/curator:/from \
+   -v curator_backups:/backups \
+   alpine tar -czf /backups/curator-code-$DATE.tar.gz \
+     --exclude=/from/karakeep/data \
+     --exclude=/from/curator/logs \
+     -C /from .
+
+ # Eliminar backups antiguos (mantener últimos 7 días)
+ docker run --rm -v curator_backups:/backups alpine \
+   find /backups -name "*.tar.gz" -type f -mtime +7 -delete
+ docker run --rm -v curator_backups:/backups alpine \
+   find /backups -name ".env-*" -type f -mtime +7 -delete
+
+ # Log
+ docker run --rm -v curator_backups:/backups alpine \
+   sh -c 'echo "Backup con Docker Volumes completado el $(date)" >> /backups/backup_log.txt'
+
+
+
+Hacer el script ejecutable:
+
+ chmod +x /opt/curator/backup_docker_volumes.sh
+
+
+
+Programar el backup con cron (ej: diariamente a las 2 AM):
+
+ crontab -e
+
+
+
+
+
+Probar el script manualmente:
+
+ /opt/curator/backup_docker_volumes.sh
+
+
+
+Verificar los backups en el volumen:
+
+ docker run --rm -v curator_backups:/backups alpine ls -la /backups
+
+Restaurar desde el volumen de Docker
+
+
+
+
+
+Parar los servicios:
+
+ cd /opt/curator && docker compose down
+
+
+
+Restaurar los datos de Karakeep:
+
+ docker run --rm \
+   -v curator_backups:/backups \
+   -v /opt/curator/karakeep/data:/to \
+   alpine tar -xzf /backups/karakeep-data-YYYYMMDD_HHMMSS.tar.gz -C /to
+
+
+
+Restaurar el .env:
+
+ docker run --rm \
+   -v curator_backups:/backups \
+   -v /opt/curator:/to \
+   alpine cp /backups/.env-YYYYMMDD_HHMMSS /to/.env
+
+
+
+Arrancar los servicios:
+
+ docker compose up -d
+
+
+
+Restaurar desde cualquier método de backup
+
+🔄 Restauración general
+
+
+
+
+
+Parar todos los servicios:
+
+ cd /opt/curator && docker compose down
+
+
+
+Restaurar los datos según el método usado:
+
+
+
+**Desde disco/NAS:**
+
+**Desde S3:**
+
+aws s3 cp s3://tu-bucket/backups/karakeep/karakeep-data-YYYYMMDD.tar.gz /tmp/
+tar -xzf /tmp/karakeep-data-YYYYMMDD.tar.gz -C /
+aws s3 cp s3://tu-bucket/backups/env/.env-YYYYMMDD /opt/curator/.env
+
+**Desde volumen de Docker:**
+
+docker run --rm -v curator_backups:/backups alpine tar -xzf /backups/karakeep-data-YYYYMMDD.tar.gz -C /opt/curator/karakeep/data
+docker run --rm -v curator_backups:/backups alpine cp /backups/.env-YYYYMMDD /opt/curator/.env
+
+
+
+Arrancar los servicios:
+
+ docker compose up -d
+
+
+
+Verificar que todo funciona:
+
+ docker compose logs -f curator
+
+
+
+Actualizar Karakeep
+
+
+
+
+
+Parar los servicios:
+
+ cd /opt/curator && docker compose down
+
+
+
+Hacer backup de los datos (ver sección anterior).
+
+
+
+Actualizar la imagen:
+
+ docker compose pull karakeep
+
+
+
+Arrancar:
+
+ docker compose up -d
+
+
+
+Verificar en los logs que Karakeep arranca correctamente:
+
+ docker compose logs -f karakeep
+
+
+
+La versión de Karakeep se controla con la variable KARAKEEP_VERSION en .env
+(por defecto usa release, es decir, siempre la última versión estable).
+
+
+
+Referencia rápida de archivos
+
+
+
+
+
+
+
+Ruta
+
+
+
+Descripción
+
+
+
+
+
+/opt/curator/.env
+
+
+
+Variables de entorno y credenciales
+
+
+
+
+
+/opt/curator/docker-compose.yml
+
+
+
+Definición de servicios
+
+
+
+
+
+/opt/curator/curator/src/index.js
+
+
+
+Código del pipeline
+
+
+
+
+
+/opt/curator/karakeep/data/
+
+
+
+Datos persistentes de Karakeep
+
+
+
+
+
+/opt/curator/curator/logs/
+
+
+
+Logs de aplicación
+
+
+
+
+
+/opt/curator/CURATOR_PROJECT_REFERENCE.md
+
+
+
+Especificación técnica completa

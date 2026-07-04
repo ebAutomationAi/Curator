@@ -75,6 +75,12 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q --spider http://127.0.0.1:3001/health && wget -q --spider https://hc-ping.com/079f6a0c-0a04-4172-83b6-5e61bce79662 || exit 1"]
+      interval: 20m
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   proxy:

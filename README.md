@@ -97,7 +97,7 @@ Los logs rotan automáticamente (configurado en `docker-compose.yml`):
 El modo polling está activo temporalmente (`TELEGRAM_POLLING=true` en `.env`).
 Cuando el DNS propague y NPM apunte a `curator:3001`, cambiar a webhook:
 
-1. En Nginx Proxy Manager (puerto 81), verificar que el Proxy Host `curator-kiko.duckdns.org` apunta a `curator:3001` con SSL activo.
+1. En Nginx Proxy Manager (puerto 81), verificar que el Proxy Host `your-subdomain.duckdns.org` apunta a `curator:3001` con SSL activo.
 
 2. Editar `.env` y eliminar o comentar la línea:
    ```bash
@@ -111,7 +111,7 @@ Cuando el DNS propague y NPM apunte a `curator:3001`, cambiar a webhook:
 
 4. Registrar el webhook con Telegram:
    ```bash
-   curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://curator-kiko.duckdns.org/webhook/telegram"
+   curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://your-subdomain.duckdns.org/webhook/telegram"
    ```
 
 5. Verificar que el webhook está activo:

@@ -1,7 +1,6 @@
 # CURATOR — Guía de mantenimiento
 
 Sistema de curación de contenidos: el usuario comparte URLs por Telegram y el sistema las archiva en Karakeep con metadatos generados por IA.
-
 ```
 Telegram → Curator Service → Jina Reader → Groq/Gemini → Karakeep → Notificación Telegram
 ```

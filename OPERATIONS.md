@@ -169,6 +169,9 @@ sudo mkdir -p /mnt/backups/curator
 Montar el disco o NAS:
 
 **Para disco USB/externo (ext4):**
+```bash
+sudo mount /dev/sda1 /mnt/backups/curator
+```
 
 **Para NAS (CIFS/SMB):**
 
@@ -177,7 +180,7 @@ sudo apt install cifs-utils  # Instalar soporte para SMB/CIFS
 sudo mount -t cifs //192.168.1.100/backups /mnt/backups/curator -o username=tu_usuario,password=tu_contraseña,vers=3.0
 ```
 
-Configurar montaje automático al arrancar (opcional):
+Configurar montaje automático al arrancar (opcional): añade una línea a `/etc/fstab` con el dispositivo y punto de montaje correspondiente.
 
 Verificar el montaje:
 
@@ -571,4 +574,3 @@ La versión de Karakeep se controla con la variable KARAKEEP_VERSION en .env
 | /opt/curator/curator/src/index.js | Código del pipeline |
 | /opt/curator/karakeep/data/ | Datos persistentes de Karakeep |
 | /opt/curator/curator/logs/ | Logs de aplicación |
-| /opt/curator/CURATOR_PROJECT_REFERENCE.md | Especificación técnica completa |

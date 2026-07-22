@@ -221,17 +221,20 @@ async function callGroq(prompt) {
 
 // ── Telegram notifications ────────────────────────────────────────────────────
 
-async function sendTelegram(chatId, text) {
+// index.js — sendTelegram — reemplazo total de la función
+async function sendTelegram(chatId, text, options = {}) {
   const targetChatId = chatId ?? process.env.TELEGRAM_CHAT_ID;
   if (!targetChatId) {
     fastify.log.warn('sendTelegram: no hay chat ID disponible');
     return;
   }
   try {
+    const payload = { chat_id: targetChatId, text };
+    if (options.reply_markup) payload.reply_markup = options.reply_markup;
     const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: targetChatId, text }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) fastify.log.warn({ status: res.status }, 'sendTelegram: fallo al enviar notificación');
   } catch (err) {
@@ -239,6 +242,19 @@ async function sendTelegram(chatId, text) {
   }
 }
 
+// index.js — buildKarakeepButton — función nueva (añadir después de sendTelegram)
+// index.js — buildKarakeepButton — reemplazo total de la función
+function buildKarakeepButton(bookmarkId) {
+  const publicUrl = process.env.NEXTAUTH_URL;
+  if (!publicUrl || !bookmarkId) return {};
+  return {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '📖 Ver en Karakeep', url: `${publicUrl}/dashboard/preview/${bookmarkId}` },
+      ]],
+    },
+  };
+}
 // ── Tag normalization ─────────────────────────────────────────────────────────
 
 // index.js — checkAndNormalizeTags — reemplazo total de la función
@@ -427,18 +443,22 @@ async function processMessage(message) {
   fastify.log.info({ chatId, url }, 'Guardando en Karakeep');
   const karakeep = await callKarakeep(url, ai.result);
 
+  // index.js — bloque de notificación en processMessage — reemplazo líneas del if (karakeep.ok)
   if (karakeep.ok) {
     fastify.log.info({ chatId, url, bookmarkId: karakeep.bookmarkId }, 'Karakeep OK — bookmark creado');
+    const btn = buildKarakeepButton(karakeep.bookmarkId);
 
     if (!ai.ok) {
-      await sendTelegram(chatId, `❌ Error al procesar\n🔗 ${url}\n💬 No se pudo analizar el contenido`);
+      await sendTelegram(chatId, `❌ Error al procesar\n🔗 ${url}\n💬 No se pudo analizar el contenido`, btn);
     } else if (!jina.ok) {
       await sendTelegram(chatId,
-        `⚠️ Guardado (contenido parcial)\n📌 ${ai.result.titulo}\n📂 ${ai.result.categoria} · ${ai.result.tipo}\nℹ️ No se pudo extraer el texto completo`
+        `⚠️ Guardado (contenido parcial)\n📌 ${ai.result.titulo}\n📂 ${ai.result.categoria} · ${ai.result.tipo}\nℹ️ No se pudo extraer el texto completo`,
+        btn,
       );
     } else {
       await sendTelegram(chatId,
-        `✅ Guardado\n📌 ${ai.result.titulo}\n📂 ${ai.result.categoria} · ${ai.result.tipo} · prioridad ${ai.result.prioridad}/5\n🏷 ${ai.result.etiquetas.slice(0, 3).join(', ')}`
+        `✅ Guardado\n📌 ${ai.result.titulo}\n📂 ${ai.result.categoria} · ${ai.result.tipo} · prioridad ${ai.result.prioridad}/5\n🏷 ${ai.result.etiquetas.slice(0, 3).join(', ')}`,
+        btn,
       );
     }
   } else {

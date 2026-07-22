@@ -1,12 +1,44 @@
-# CURATOR — Guía de mantenimiento
+# Curator — AI Content Curation Pipeline
 
-Sistema de curación de contenidos: el usuario comparte URLs por Telegram y el sistema las archiva en Karakeep con metadatos generados por IA.
+Pipeline de curación de contenidos self-hosted: comparte una URL por Telegram y en segundos queda archivada en tu biblioteca personal con resumen, categoría y etiquetas generadas por IA.
+
 ```
 Telegram → Curator Service → Jina Reader → Groq/Gemini → Karakeep → Notificación Telegram
 ```
 
-Directorio del proyecto: `/opt/curator`
-Zona horaria: `Europe/Madrid`
+## ¿Qué problema resuelve?
+
+Guardar enlaces para leer después genera ruido sin valor: sin resumen, sin contexto, sin búsqueda. Curator convierte cada URL en un bookmark estructurado y buscable, procesado automáticamente en el momento en que lo compartes.
+
+## Stack
+
+| Componente | Tecnología |
+|---|---|
+| Interfaz de entrada | Telegram Bot (polling / webhook) |
+| Extracción de contenido | Jina Reader API |
+| Generación de metadatos | Gemini Flash (principal) + Groq (fallback automático) |
+| Almacenamiento | Karakeep + Meilisearch |
+| Infraestructura | Docker Compose · Orange Pi 5 Max (ARM64) · Ubuntu |
+| Proxy / SSL | Nginx Proxy Manager + DuckDNS |
+
+## Características
+
+- Fallback automático Gemini → Groq cuando se agota el cupo diario de la API gratuita
+- Log rotation configurado (50 MB máx. para el pipeline principal)
+- Arranque automático vía systemd tras reinicio del servidor
+- Self-hosted completo: ningún dato sale de tu infraestructura
+
+## Despliegue
+
+Requiere Docker, Docker Compose, y las API keys de Telegram, Jina, Gemini y/o Groq.
+
+```bash
+git clone https://github.com/ebAutomationAi/Curator.git
+cd Curator
+cp .env.example .env   # completar credenciales
+docker network create proxy
+docker compose up -d
+```
 
 ---
 

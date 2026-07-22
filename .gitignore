@@ -14,6 +14,9 @@ curator/node_modules/
 # Claude Code (archivos locales del editor IA)
 .claude/
 
+# Graphify (grafo de código generado localmente)
+graphify-out/
+
 # Sistema
 .DS_Store
 *.log

@@ -24,3 +24,9 @@ graphify-out/
 # Backups generados por troubleshooting — nunca al repo
 *.tar.gz
 *.backup-*
+
+# Documentación interna / config de agente — no público
+CLAUDE.md
+CURATOR_PROJECT_REFERENCE.md
+skills-lock.json
+.claudeignore

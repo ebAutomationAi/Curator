@@ -1,11 +1,21 @@
 {
   "name": "curator",
   "version": "1.0.0",
-  "description": "Intelligent content curation pipeline service",
+  "description": "AI-powered content curation pipeline: Telegram → Jina → Gemini/Groq → Karakeep",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test src/*.test.js"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ebAutomationAi/Curator.git"
+  },
+  "author": "Kiko",
+  "license": "MIT",
   "dependencies": {
     "fastify": "4.28.0"
   }

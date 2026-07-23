@@ -1,3 +1,9 @@
+## `README.md` — Cambios principales
+
+- **Nueva sección**: *Autenticación y recuperación de contraseña* — explica que Karakeep maneja su propio login con "Forgot Password" y que solo requiere configurar SMTP.
+- **Actualizado**: *Quick start* — añadido paso de configurar SMTP.
+- **Actualizado**: *Tech stack / Infrastructure* — mención de Nginx Proxy Manager y SMTP.
+
 # Curator — AI Content Curation Pipeline
 
 Self-hosted automation pipeline that turns shared Telegram links into AI-categorized, searchable bookmarks in under 30 seconds.
@@ -18,6 +24,12 @@ Mobile → Telegram Bot → Curator (Node.js/Fastify)
 4. If Gemini quota is exhausted (429), Groq takes over automatically
 5. Bookmark is saved to Karakeep with all metadata attached
 6. Telegram confirms with a direct link to the bookmark
+
+## Autenticación y recuperación de contraseña
+
+Karakeep incluye su propio sistema de autenticación con soporte para **recuperación de contraseña (Forgot Password)** desde la v0.26.0. No requiere modificar código: solo configurar un servidor SMTP en el `.env` para que Karakeep pueda enviar los emails de reset.
+
+Ver [OPERATIONS.md](OPERATIONS.md) para la configuración detallada de SMTP.
 
 ## Key technical decisions
 
@@ -45,9 +57,9 @@ Mobile → Telegram Bot → Curator (Node.js/Fastify)
 | Search | Meilisearch |
 | Infrastructure | Docker Compose · ARM64 (Orange Pi 5 Max / RK3588) |
 | Reverse proxy | Nginx Proxy Manager + DuckDNS |
+| Email | SMTP (Gmail, SendGrid, AWS SES, etc.) |
 
 ## Project structure
-
 ```
 curator/
 ├── src/

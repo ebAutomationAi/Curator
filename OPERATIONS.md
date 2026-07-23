@@ -39,6 +39,42 @@ Para verificar que Docker arranca con el sistema:
 systemctl is-enabled docker   # debe devolver "enabled"
 ```
 
+## Configurar recuperación de contraseña (Forgot Password)
+Karakeep (imagen oficial) incluye la funcionalidad de recuperación de contraseña desde la v0.26.0. No es necesario modificar código: solo hay que configurar el servidor SMTP en el .env para que Karakeep pueda enviar los emails de reset.
+Variables de entorno SMTP
+Añade al .env las siguientes variables:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=tu-email@gmail.com
+SMTP_PASSWORD=tu-app-password
+SMTP_FROM=tu-email@gmail.com
+```
+
+Importante: SMTP_FROM debe ser una dirección de email válida, no un nombre como Karakeep. Si usas Gmail, SMTP_PASSWORD debe ser una App Password de 16 caracteres (no tu contraseña normal de cuenta).
+
+## Proveedores SMTP comunes
+| Proveedor       | `SMTP_HOST`                          | `SMTP_PORT` | `SMTP_SECURE` | Notas                         |
+| --------------- | ------------------------------------ | ----------- | ------------- | ----------------------------- |
+| **Gmail**       | `smtp.gmail.com`                     | `587`       | `false`       | Requiere App Password         |
+| **Outlook/365** | `smtp.office365.com`                 | `587`       | `false`       | Requiere App Password         |
+| **SendGrid**    | `smtp.sendgrid.net`                  | `587`       | `false`       | Usa `apikey` como `SMTP_USER` |
+| **AWS SES**     | `email-smtp.us-east-1.amazonaws.com` | `587`       | `false`       | Usa SMTP credentials de SES   |
+
+## Aplicar cambios
+Tras editar .env, recrea el contenedor de Karakeep para que recoja las variables:
+
+```bash
+docker compose up -d --force-recreate karakeep
+docker compose logs -f karakeep
+```
+
+Verifica que el servicio pase a estado healthy:
+```bash
+docker compose ps
+```
 ---
 
 ## Ver logs
@@ -69,6 +105,7 @@ Los logs rotan automáticamente (configurado en `docker-compose.yml`):
    ```
 
 2. Recrear el contenedor afectado (restart **no** recarga `.env`):
+
    ```bash
    docker compose up -d --force-recreate curator
    ```
@@ -83,6 +120,10 @@ Los logs rotan automáticamente (configurado en `docker-compose.yml`):
 > GROQ_API_KEY=mi_clave
 > ```
 
+## Seguridad: el archivo .env debe estar en .gitignore y tener permisos restrictivos en el servidor:
+```bash
+chmod 600 /opt/curator/.env
+```
 ---
 
 ## Desactivar TELEGRAM_POLLING (activar modo webhook)
@@ -142,6 +183,24 @@ Si Groq también falla, el bookmark se guarda en Karakeep con `resumen = "Sin pr
 
 ---
 
+## Troubleshooting común
+Email service is not configured al usar Forgot Password
+Significa que faltan las variables SMTP o tienen nombres incorrectos. Verifica:
+  - SMTP_USER (no SMTP_USERNAME)
+  - SMTP_FROM debe ser un email válido, no un nombre
+  - SMTP_SECURE debe ser false o true (cuidado con el typo flase)
+El contenedor karakeep debe estar healthy después de reiniciar
+Servicio karakeep aparece como unhealthy
+Revisa los logs:
+```bash
+docker compose logs -f karakeep
+```
+Puede deberse a:
+Falta de variables críticas (MEILI_ADDR, DATA_DIR)
+Meilisearch no está listo (revisa docker compose logs meilisearch)
+La variable HEALTHCHECK_UUID no está definida (warning inofensivo, no crítico)
+
+--- 
 ## Backup y restauración
 
 ### 📁 Opciones de almacenamiento para backups

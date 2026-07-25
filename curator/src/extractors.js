@@ -21,8 +21,14 @@ function detectLoginWall(content) {
   let signalCount = 0;
   for (const signal of LOGIN_SIGNALS) {
     const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const matches = lower.match(new RegExp(`^\\s*${escaped}\\s*$`, 'gim'));
-    if (matches) signalCount += matches.length;
+
+    // Match 1: señal standalone en su propia línea (TikTok, Instagram)
+    const standaloneMatches = lower.match(new RegExp(`^\\s*${escaped}\\s*$`, 'gim'));
+    if (standaloneMatches) signalCount += standaloneMatches.length;
+
+    // Match 2: señal como texto de enlace markdown [señal](url) — patrón de X/Twitter
+    const markdownMatches = lower.match(new RegExp(`\\[\\s*${escaped}\\s*\\]\\(https?://`, 'gim'));
+    if (markdownMatches) signalCount += markdownMatches.length;
   }
   return { isWall: signalCount >= 2, signalCount };
 }

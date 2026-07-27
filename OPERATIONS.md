@@ -13,6 +13,19 @@ docker network create proxy
 
 ---
 
+## Requisito de permisos: curator/data
+
+`curator/data/` se monta como bind mount en `/app/data` dentro del contenedor y se usa para persistir el offset del polling de Telegram. Debe pertenecer al mismo UID/GID que el usuario `node` del contenedor (UID 1000) **antes** del primer `docker compose up` — si no, las escrituras fallan silenciosamente con EACCES y la app cae a llevar el offset solo en memoria (se registra como warning, no como error fatal).
+
+```bash
+mkdir -p /opt/curator/curator/data
+sudo chown -R 1000:1000 /opt/curator/curator/data
+```
+
+Es un problema distinto al de Alpine/localhost IPv6 documentado en [README.md](README.md) (sección "Non-root container with explicit ownership") — aquel es de resolución DNS, este es de propiedad de archivos — pero ambos son consecuencia de correr el contenedor como usuario no-root (`USER node`): los bind mounts heredan la propiedad del host tal cual, no se adaptan al usuario del contenedor.
+
+---
+
 ## Arrancar y parar el sistema
 
 ```bash
@@ -29,6 +42,10 @@ docker compose restart curator
 # Ver estado de todos los servicios
 docker compose ps
 ```
+
+### Apagado ordenado (graceful shutdown)
+
+`docker compose down` / `docker stop curator` ya no matan el trabajo en curso de forma instantánea: el proceso espera hasta 10 segundos a que termine cualquier `processMessage` activo (Jina/Gemini/Groq/Karakeep en curso) antes de salir. Esto significa que un stop/restart durante procesamiento activo puede tardar unos segundos extra — es el comportamiento esperado, no un cuelgue.
 
 ### Arranque automático tras reinicio
 
@@ -94,6 +111,29 @@ Los logs rotan automáticamente (configurado en `docker-compose.yml`):
 - `curator`: máximo 5 archivos × 10 MB = 50 MB
 - `karakeep`: máximo 3 archivos × 10 MB = 30 MB
 - `meilisearch`, `chrome`: máximo 3 archivos × 5 MB = 15 MB cada uno
+
+---
+
+## Límites de recursos Docker
+
+Cada servicio declara límites de CPU y memoria en `docker-compose.yml` (`deploy.resources.limits/reservations`), necesarios en un SBC ARM64 con RAM limitada:
+
+| Servicio | CPU límite | Memoria límite | Memoria reservada |
+|---|---|---|---|
+| karakeep | 1.0 | 768M | 256M |
+| chrome | 1.5 | 512M | 128M |
+| meilisearch | 1.0 | 512M | 128M |
+| curator | 0.5 | 256M | 64M |
+
+Para ver el consumo actual de cada contenedor:
+```bash
+docker stats --no-stream
+```
+
+Si un servicio está siendo throttled o Docker lo mata por OOM, sube su límite editando el bloque `deploy.resources.limits` correspondiente en `docker-compose.yml` y recrea solo ese servicio:
+```bash
+docker compose up -d --force-recreate <servicio>
+```
 
 ---
 
@@ -633,3 +673,4 @@ La versión de Karakeep se controla con la variable KARAKEEP_VERSION en .env
 | /opt/curator/curator/src/index.js | Código del pipeline |
 | /opt/curator/karakeep/data/ | Datos persistentes de Karakeep |
 | /opt/curator/curator/logs/ | Logs de aplicación |
+| /opt/curator/curator/data/offset.json | Offset persistido del polling de Telegram (se regenera solo si falta) |

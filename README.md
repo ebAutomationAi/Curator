@@ -45,6 +45,18 @@ Ver [OPERATIONS.md](OPERATIONS.md) para la configuración detallada de SMTP.
 
 **`NEXTAUTH_URL` reuse for Telegram deep links.** The Telegram notification includes an inline button linking directly to the bookmark in Karakeep (`/dashboard/preview/{id}`). Rather than introducing a separate `KARAKEEP_PUBLIC_URL` variable, the pipeline reuses `NEXTAUTH_URL` — the variable Karakeep already requires. One source of truth, zero drift.
 
+**Graceful shutdown on SIGTERM/SIGINT.** Docker sends SIGTERM on container stop and kills the process after a 10s timeout if it hasn't exited. The server now tracks in-flight jobs and, on shutdown, stops accepting new work while waiting (up to 10s) for active `processMessage` calls to finish before closing Fastify and exiting — so a routine redeploy doesn't cut off a Jina/Gemini/Karakeep call mid-flight.
+
+**In-memory cache for the Karakeep tags list.** `checkAndNormalizeTags` previously fetched the full tag list from Karakeep on every single message, even though the tag set barely changes within a session. A 5-minute TTL cache eliminates that redundant call, and if a refresh fetch fails, the pipeline falls back to the stale cache rather than skipping normalization entirely — a slightly outdated tag list is still more useful than none.
+
+**Persisted Telegram polling offset.** The polling loop's `getUpdates` offset used to live only in memory, so every restart (deploy, crash, or the graceful shutdown above) reset it to 0 and made Telegram redeliver already-processed updates — re-triggering the full AI pipeline and duplicate notifications. The offset is now written to `curator/data/offset.json` (mounted as a Docker volume) after each processed update, so it survives container recreation.
+
+**Docker resource limits on every service.** Running on an ARM64 SBC (Orange Pi 5 Max) means total RAM is a hard constraint, not just a cost concern. Each service now declares `deploy.resources.limits/reservations` — Chrome, the highest OOM risk given headless-browser memory leaks and bursts, is still capped well below Karakeep (512M vs. 768M) to keep a runaway browser process from taking down other host processes.
+
+**In-memory cache for Jina-extracted content.** Resending or forwarding the same link re-ran the full Jina extraction and AI pipeline for identical content. A 24-hour TTL cache keyed by URL, capped at 500 entries with oldest-first eviction, skips the redundant fetch — but only successful extractions are cached, since a failed fetch (login wall, timeout) may just be transient and deserves a fresh attempt next time.
+
+**Single retry with backoff for Telegram notifications.** A dropped notification meant the bookmark was saved but the user never found out. `sendTelegram` now retries once after a 3s delay, but only on 5xx responses or thrown network errors — 4xx errors are client-side problems (bad chat ID, blocked bot) that a retry can't fix, so those fail fast without wasting the extra attempt.
+
 ## Tech stack
 
 | Component | Technology |

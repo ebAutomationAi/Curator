@@ -1,6 +1,10 @@
 'use strict';
 
 const JINA_TIMEOUT_MS = 20000;
+const JINA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const JINA_CACHE_MAX_SIZE = 500;
+
+const jinaCache = new Map();
 
 // Señales de login que aparecen solas en su línea (botones/CTAs, no prosa).
 // Umbral 2: análisis real de TikTok via Jina muestra "Log in" ×4 standalone;
@@ -34,6 +38,12 @@ function detectLoginWall(content) {
 }
 
 async function fetchJina(url, logger = console) {
+  const cached = jinaCache.get(url);
+  if (cached && Date.now() - cached.cachedAt < JINA_CACHE_TTL_MS) {
+    logger.info({ url }, 'fetchJina: usando resultado cacheado');
+    return { content: cached.content, ok: cached.ok, error: cached.error };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), JINA_TIMEOUT_MS);
   try {
@@ -54,6 +64,11 @@ async function fetchJina(url, logger = console) {
       logger.warn({ url, length: content.trim().length }, 'fetchJina: contenido insuficiente — descartando');
       return { content: null, ok: false, error: 'Contenido insuficiente' };
     }
+
+    if (jinaCache.size >= JINA_CACHE_MAX_SIZE) {
+      jinaCache.delete(jinaCache.keys().next().value);
+    }
+    jinaCache.set(url, { content, ok: true, error: null, cachedAt: Date.now() });
 
     return { content, ok: true };
   } catch (err) {

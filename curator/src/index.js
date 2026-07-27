@@ -7,6 +7,9 @@ const PORT = 3001;
 const HOST = '0.0.0.0';
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.BOT_TOKEN}`;
 
+let isShuttingDown = false;
+let activeJobs = 0;
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -14,7 +17,12 @@ function sleep(ms) {
 // ── Webhook mode ──────────────────────────────────────────────────────────────
 
 fastify.post('/webhook/telegram', async (request) => {
-  await processMessage(request.body?.message, fastify.log);
+  activeJobs++;
+  try {
+    await processMessage(request.body?.message, fastify.log);
+  } finally {
+    activeJobs--;
+  }
   return { ok: true };
 });
 
@@ -28,7 +36,7 @@ async function startPolling() {
 
   let offset = 0;
 
-  while (true) {
+  while (!isShuttingDown) {
     try {
       const res = await fetch(
         `${TELEGRAM_API}/getUpdates?offset=${offset}&timeout=30`
@@ -41,7 +49,12 @@ async function startPolling() {
       const { result = [] } = await res.json();
       for (const update of result) {
         offset = update.update_id + 1;
-        await processMessage(update.message, fastify.log);
+        activeJobs++;
+        try {
+          await processMessage(update.message, fastify.log);
+        } finally {
+          activeJobs--;
+        }
       }
     } catch (err) {
       fastify.log.error({ error: err.message }, 'Polling error — reintentando en 5s');
@@ -49,6 +62,27 @@ async function startPolling() {
     }
   }
 }
+
+// ── Apagado ordenado ──────────────────────────────────────────────────────────
+
+async function shutdown() {
+  fastify.log.info('Señal de apagado recibida, iniciando shutdown ordenado');
+  isShuttingDown = true;
+
+  const maxWaitMs = 10000;
+  const pollIntervalMs = 200;
+  let waited = 0;
+  while (activeJobs > 0 && waited < maxWaitMs) {
+    await sleep(pollIntervalMs);
+    waited += pollIntervalMs;
+  }
+
+  await fastify.close();
+  process.exit(0);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 // ── Arranque ──────────────────────────────────────────────────────────────────
 

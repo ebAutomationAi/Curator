@@ -27,12 +27,8 @@ async function sendTelegram(chatId, text, options = {}, logger = console) {
       if (!res.ok) {
         logger.warn({ status: res.status }, 'sendTelegram: fallo al enviar notificación');
         if (res.status >= 500 && attempt === 1) {
-          logger.warn({ status: res.status }, 'sendTelegram: reintentando tras error 5xx');
           await sleep(TELEGRAM_RETRY_DELAY_MS);
           continue;
-        }
-        if (attempt === 2) {
-          logger.warn({ status: res.status }, 'sendTelegram: reintento agotado — notificación no enviada');
         }
         return;
       }
@@ -40,14 +36,22 @@ async function sendTelegram(chatId, text, options = {}, logger = console) {
     } catch (err) {
       logger.warn({ error: err.message }, 'sendTelegram: error de red');
       if (attempt === 1) {
-        logger.warn({ error: err.message }, 'sendTelegram: reintentando tras error de red');
         await sleep(TELEGRAM_RETRY_DELAY_MS);
         continue;
       }
-      logger.warn({ error: err.message }, 'sendTelegram: reintento agotado — notificación no enviada');
       return;
     }
   }
+}
+
+// Solución 1 + 2: notifica al operador (ADMIN_CHAT_ID) con clase de error y proveedor
+async function notifyAdmin(message, logger = console) {
+  const adminChatId = process.env.ADMIN_CHAT_ID;
+  if (!adminChatId) {
+    logger.warn('notifyAdmin: ADMIN_CHAT_ID no configurado — alerta descartada');
+    return;
+  }
+  await sendTelegram(adminChatId, `🚨 Curator ALERTA\n${message}`, {}, logger);
 }
 
 function buildKarakeepButton(bookmarkId) {
@@ -62,4 +66,4 @@ function buildKarakeepButton(bookmarkId) {
   };
 }
 
-module.exports = { sendTelegram, buildKarakeepButton };
+module.exports = { sendTelegram, notifyAdmin, buildKarakeepButton };

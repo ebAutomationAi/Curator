@@ -1,6 +1,10 @@
+// karakeep.js — /opt/curator/curator/src/karakeep.js — reemplazo total
 'use strict';
 
 const KARAKEEP_TIMEOUT_MS = 20000;
+const TAGS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let tagsCache = { tags: null, fetchedAt: 0 };
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -12,39 +16,58 @@ async function checkAndNormalizeTags(etiquetas, logger = console) {
   const apiKey = process.env.KARAKEEP_API_KEY;
   if (!apiKey) return etiquetas;
 
-  // AbortController declarado fuera del try para que finally pueda limpiar timer
-  // aunque el fetch lance antes de asignarlo.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), KARAKEEP_TIMEOUT_MS);
+  const isFresh = tagsCache.tags !== null && (Date.now() - tagsCache.fetchedAt < TAGS_CACHE_TTL_MS);
 
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/tags`, {
-      signal: controller.signal,
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `Bearer ${apiKey}`,
-      },
-    });
-    if (!res.ok) {
-      logger.warn({ status: res.status }, 'checkAndNormalizeTags: GET /tags falló — usando etiquetas sin normalizar');
-      return etiquetas;
+  let existingMap;
+
+  if (isFresh) {
+    existingMap = tagsCache.tags;
+  } else {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), KARAKEEP_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/tags`, {
+        signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          'authorization': `Bearer ${apiKey}`,
+        },
+      });
+      if (!res.ok) {
+        if (res.status === 401) tagsCache = { tags: null, fetchedAt: 0 };
+        if (tagsCache.tags !== null) {
+          logger.warn({ status: res.status }, 'checkAndNormalizeTags: GET /tags falló — usando caché desactualizada');
+          existingMap = tagsCache.tags;
+        } else {
+          logger.warn({ status: res.status }, 'checkAndNormalizeTags: GET /tags falló — usando etiquetas sin normalizar');
+          return etiquetas;
+        }
+      } else {
+        const data = await res.json();
+        const existingTags = data.tags ?? [];
+        existingMap = new Map(existingTags.map((t) => [t.name.toLowerCase(), t.name]));
+        tagsCache = { tags: existingMap, fetchedAt: Date.now() };
+      }
+    } catch (err) {
+      if (tagsCache.tags !== null) {
+        logger.warn({ error: err.message }, 'checkAndNormalizeTags: error — usando caché desactualizada');
+        existingMap = tagsCache.tags;
+      } else {
+        logger.warn({ error: err.message }, 'checkAndNormalizeTags: error — usando etiquetas sin normalizar');
+        return etiquetas;
+      }
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await res.json();
-    const existingTags = data.tags ?? [];
-    const existingMap = new Map(existingTags.map((t) => [t.name.toLowerCase(), t.name]));
-    const normalized = etiquetas.map((tag) => {
-      const lower = tag.toLowerCase();
-      return existingMap.has(lower) ? existingMap.get(lower) : lower;
-    });
-    logger.info({ original: etiquetas, normalized }, 'checkAndNormalizeTags — etiquetas normalizadas');
-    return normalized;
-  } catch (err) {
-    // err.name === 'AbortError' cuando dispara el timeout; err.message lo recoge igual.
-    logger.warn({ error: err.message }, 'checkAndNormalizeTags: error — usando etiquetas sin normalizar');
-    return etiquetas;
-  } finally {
-    clearTimeout(timer);
   }
+
+  const normalized = etiquetas.map((tag) => {
+    const lower = tag.toLowerCase();
+    return existingMap.has(lower) ? existingMap.get(lower) : lower;
+  });
+  logger.info({ original: etiquetas, normalized }, 'checkAndNormalizeTags — etiquetas normalizadas');
+  return normalized;
 }
 
 async function callKarakeep(url, aiResult, logger = console) {
@@ -80,14 +103,25 @@ async function callKarakeep(url, aiResult, logger = console) {
       if (bookmarkRes.status === 401 && attempt === 1) {
         const body401 = await bookmarkRes.text().catch(() => '<no body>');
         logger.warn({ body: body401 }, 'Karakeep 401 — sesión inválida, reintentando en 2s');
+        clearTimeout(timer);
         await sleep(2000);
         continue;
       }
+
+      if (bookmarkRes.status === 500 && attempt === 1) {
+        const body500 = await bookmarkRes.text().catch(() => '<no body>');
+        logger.warn({ body: body500 }, 'Karakeep 500 — error interno, reintentando en 3s');
+        clearTimeout(timer);
+        await sleep(3000);
+        continue;
+      }
+
       if (!bookmarkRes.ok) {
         const errBody = await bookmarkRes.text().catch(() => '<no body>');
-        if (bookmarkRes.status === 401) logger.warn({ body: errBody }, 'Karakeep 401 — segundo intento fallido');
-        throw new Error(`HTTP ${bookmarkRes.status}`);
+        logger.error({ status: bookmarkRes.status, body: errBody }, 'Karakeep error no recuperable');
+        throw new Error(`HTTP ${bookmarkRes.status}: ${errBody.slice(0, 200)}`);
       }
+
       const bookmark = await bookmarkRes.json();
 
       // ── Paso 2: adjuntar etiquetas ────────────────────────────────────────
@@ -106,11 +140,10 @@ async function callKarakeep(url, aiResult, logger = console) {
             }),
           });
           if (!tagsRes.ok) {
-            logger.warn({ status: tagsRes.status }, 'Karakeep tags FAIL — bookmark creado sin etiquetas');
+            const tagsErrBody = await tagsRes.text().catch(() => '<no body>');
+            logger.warn({ status: tagsRes.status, body: tagsErrBody }, 'Karakeep tags FAIL — bookmark creado sin etiquetas');
           }
         } catch (tagsErr) {
-          // AbortError si timeout; cualquier error de red en otro caso.
-          // El bookmark ya existe: este fallo es degradación controlada, no fatal.
           logger.warn({ error: tagsErr.message }, 'Karakeep tags ERROR — bookmark creado sin etiquetas');
         } finally {
           clearTimeout(tagsTimer);
@@ -127,7 +160,7 @@ async function callKarakeep(url, aiResult, logger = console) {
 
   // Inalcanzable con la lógica actual: el catch del loop siempre hace return.
   // Se conserva como contrato explícito para futuros cambios en el flujo de reintentos.
-  return { ok: false, error: 'Karakeep 401 — sesión inválida tras reintento' };
+  return { ok: false, error: 'Karakeep — error no recuperable tras reintento' };
 }
 
 module.exports = { callKarakeep, checkAndNormalizeTags };

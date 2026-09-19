@@ -3,7 +3,7 @@
 const { parseAIJson, validateSchema } = require('./validation');
 
 const AI_TIMEOUT_MS = 30000;
-const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
 
 function sleep(ms) {

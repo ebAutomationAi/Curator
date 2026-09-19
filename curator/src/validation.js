@@ -24,9 +24,18 @@ function validateSchema(obj) {
     obj.categoria = 'otra';
   }
   if (typeof obj.resumen !== 'string') throw new Error('resumen inválido');
-  if (!Array.isArray(obj.puntos_clave) || obj.puntos_clave.length === 0) throw new Error('puntos_clave inválido');
-  if (!Number.isInteger(obj.prioridad) || obj.prioridad < 1 || obj.prioridad > 5) throw new Error(`prioridad inválida: ${obj.prioridad}`);
-  if (!Array.isArray(obj.etiquetas) || obj.etiquetas.length === 0) throw new Error('etiquetas inválido');
+  if (!Array.isArray(obj.puntos_clave)) {
+    console.warn('[validateSchema] puntos_clave no es array → normalizado a []');
+    obj.puntos_clave = [];
+  }
+  if (!Number.isInteger(obj.prioridad) || obj.prioridad < 1 || obj.prioridad > 5) {
+    console.warn(`[validateSchema] prioridad inválida "${obj.prioridad}" → normalizada a 3`);
+    obj.prioridad = 3;
+  }
+  if (!Array.isArray(obj.etiquetas)) {
+    console.warn('[validateSchema] etiquetas no es array → normalizado a []');
+    obj.etiquetas = [];
+  }
 }
 
 module.exports = { TIPOS_VALIDOS, CATEGORIAS_VALIDAS, parseAIJson, validateSchema };

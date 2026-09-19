@@ -60,6 +60,7 @@ async function callGemini(prompt, logger = console) {
 
       if ((res.status === 502 || res.status === 503) && attempt === 1) {
         logger.warn(`Gemini ${res.status} — reintentando`);
+        clearTimeout(timer);
         await sleep(5000);
         continue;
       }
@@ -72,6 +73,15 @@ async function callGemini(prompt, logger = console) {
       validateSchema(parsed);
       return { result: parsed, ok: true };
     } catch (err) {
+      // Solo reintentamos en el primer intento si el error es de parseo/schema
+      // (puede ser ruido transitorio del modelo). Errores de red salen directo.
+      if (attempt === 1 && (err instanceof SyntaxError || err.message.includes('inválid'))) {
+        logger.warn({ error: err.message }, 'Gemini parseo/schema error — reintentando');
+        clearTimeout(timer);
+        await sleep(3000);
+        continue;
+      }
+      logger.error({ error: err.message }, `Gemini error en intento ${attempt}`);
       return { result: null, ok: false, error: err.message };
     } finally {
       clearTimeout(timer);
@@ -80,7 +90,7 @@ async function callGemini(prompt, logger = console) {
   return { result: null, ok: false, error: 'Gemini error tras reintento' };
 }
 
-async function callGroq(prompt) {
+async function callGroq(prompt, logger = console) {
   // split(/\s/)[0] descarta comentarios inline del .env (ej: "key # comentario")
   const apiKey = (process.env.GROQ_API_KEY ?? '').split(/\s/)[0];
   if (!apiKey) return { result: null, ok: false, error: 'GROQ_API_KEY no configurada' };
@@ -96,20 +106,26 @@ async function callGroq(prompt) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.2,
         response_format: { type: 'json_object' },
       }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '<no body>');
+      logger.error({ status: res.status, body: errBody }, 'Groq HTTP error');
+      throw new Error(`HTTP ${res.status}`);
+    }
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content;
     if (!text) throw new Error('Respuesta vacía de Groq');
+    logger.info({ preview: text.slice(0, 200) }, 'Groq respuesta raw');
     const parsed = parseAIJson(text);
     validateSchema(parsed);
     return { result: parsed, ok: true };
   } catch (err) {
+    logger.error({ error: err.message }, 'Groq error');
     return { result: null, ok: false, error: err.message };
   } finally {
     clearTimeout(timer);
